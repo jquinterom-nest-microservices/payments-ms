@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PaymentSessionDto } from './dto';
 import { Request, Response } from 'express';
+import { NATS_SERVICE } from 'src/config';
+import { ClientProxy } from '@nestjs/microservices';
 
 @Injectable()
 export class PaymentsService {
@@ -11,6 +13,7 @@ export class PaymentsService {
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(NATS_SERVICE) private readonly client: ClientProxy,
   ) {
     const stripeSecret = this.configService.get<string>('STRIPE_SECRET');
 
@@ -24,6 +27,11 @@ export class PaymentsService {
     this.logger.debug(
       `Stripe Secret: ${stripeSecret ? 'Loaded' : 'Not loaded'}`,
     );
+
+    this.client
+      .connect()
+      .then(() => console.debug('NATS client connected'))
+      .catch((err) => console.error('NATS connection error:', err));
   }
 
   async createPaymentSession(paymentSessionDto: PaymentSessionDto) {
@@ -88,12 +96,15 @@ export class PaymentsService {
     switch (event.type) {
       case 'charge.succeeded':
         const chargeSucceeded = event.data.object;
-        this.logger.log('Payment intent succeeded');
 
-        this.logger.debug({
-          metadata: chargeSucceeded.metadata,
+        const payload = {
+          stripePaymentId: chargeSucceeded.id,
           orderId: chargeSucceeded.metadata.orderId,
-        });
+          receiptUrl: chargeSucceeded.receipt_url,
+        };
+
+        this.client.emit('payment.succeeded', payload);
+
         break;
       case 'payment_intent.payment_failed':
         this.logger.warn('Payment intent payment failed');
