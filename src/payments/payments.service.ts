@@ -55,7 +55,12 @@ export class PaymentsService {
         cancel_url: this.configService.get<string>('STRIPE_CANCEL_URL'),
       });
 
-      return session;
+      // return session;
+      return {
+        cancelUrl: session.cancel_url,
+        successUrl: session.success_url,
+        url: session.url,
+      };
     } catch (error) {
       this.logger.error('Error creating payment session', error);
       throw error;
